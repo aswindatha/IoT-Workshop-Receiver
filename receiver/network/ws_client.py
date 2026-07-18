@@ -57,8 +57,10 @@ class WebSocketClient(QObject):
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event: Optional[asyncio.Event] = None
+        self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._connected_since: Optional[float] = None
         self._last_ping_sent: Optional[float] = None
+        self._backoff = RECONNECT_BASE_DELAY
         self._running = False
 
     # ------------------------------------------------------------------
@@ -74,8 +76,16 @@ class WebSocketClient(QObject):
 
     def stop(self) -> None:
         self._running = False
+        if self._loop and self._ws:
+            try:
+                asyncio.run_coroutine_threadsafe(self._ws.close(), self._loop)
+            except Exception:
+                pass
         if self._loop and self._stop_event:
-            asyncio.run_coroutine_threadsafe(self._stop_event.set(), self._loop)
+            try:
+                self._loop.call_soon_threadsafe(self._stop_event.set)
+            except Exception:
+                pass
         if self._thread:
             self._thread.join(timeout=5)
 
@@ -109,12 +119,12 @@ class WebSocketClient(QObject):
             self._loop.close()
 
     async def _main(self) -> None:
-        backoff = RECONNECT_BASE_DELAY
+        self._backoff = RECONNECT_BASE_DELAY
         while self._running and not self._stop_event.is_set():
             self.status_changed.emit("connecting")
             try:
                 await self._connect_and_serve()
-                backoff = RECONNECT_BASE_DELAY  # reset on clean disconnect
+                self._backoff = RECONNECT_BASE_DELAY  # reset on clean disconnect
             except Exception as exc:
                 logger.warning("Connection error: %s", exc)
                 self.info.emit(f"Connection error: {exc}")
@@ -126,29 +136,23 @@ class WebSocketClient(QObject):
                 break
             if self._stop_event.is_set():
                 break
-            self.info.emit(f"Reconnecting in {backoff:.0f}s ...")
+            self.info.emit(f"Reconnecting in {self._backoff:.0f}s ...")
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=backoff)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=self._backoff)
                 break  # stop requested
             except asyncio.TimeoutError:
                 pass
-            backoff = min(backoff * 2, RECONNECT_MAX_DELAY)
+            self._backoff = min(self._backoff * 2, RECONNECT_MAX_DELAY)
 
     async def _force_reconnect(self) -> None:
-        # Trigger a reconnect by setting/clearing the stop event indirectly:
-        # we simply close the current connection by cancelling the serve task.
-        # The simplest robust approach is to toggle the running flag briefly.
+        """Close the active connection so the auto-reconnect loop restarts."""
         self.info.emit("Manual reconnect requested")
-        # The _main loop will pick up the next iteration once the current
-        # connection drops. We force a drop by stopping and restarting.
-        self._running = False
-        if self._stop_event:
-            self._stop_event.set()
-        # small delay then restart
-        await asyncio.sleep(0.2)
-        self._running = True
-        self._stop_event = asyncio.Event()
-        asyncio.ensure_future(self._main())
+        self._backoff = RECONNECT_BASE_DELAY  # reset backoff for immediate reconnect
+        if self._ws:
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
 
     async def _connect_and_serve(self) -> None:
         if websockets is None:
@@ -161,6 +165,7 @@ class WebSocketClient(QObject):
             close_timeout=5,
             max_size=2 * 1024 * 1024,
         ) as ws:
+            self._ws = ws
             self._connected_since = time.time()
             self.status_changed.emit("online")
             self.info.emit("Connected to cloud server")
@@ -173,6 +178,7 @@ class WebSocketClient(QObject):
                 async for raw in ws:
                     await self._handle_frame(ws, raw)
             finally:
+                self._ws = None
                 heartbeat_task.cancel()
                 try:
                     await heartbeat_task
@@ -194,14 +200,19 @@ class WebSocketClient(QObject):
             control = None
 
         if isinstance(control, dict):
-            if "receiverCode" in control or "code" in control:
-                code = control.get("receiverCode") or control.get("code")
-                self.code_received.emit(str(code))
+            event = control.get("event")
+            if event == "connected":
+                code = control.get("receiver_code") or control.get("receiverCode") or control.get("code")
+                if code:
+                    self.code_received.emit(str(code))
                 return
-            if control.get("type") == "pong" and self._last_ping_sent:
+            if event == "pong" and self._last_ping_sent:
                 latency = (time.time() - self._last_ping_sent) * 1000.0
                 self.latency_updated.emit(round(latency, 1))
                 self._last_ping_sent = None
+                return
+            # Drop known control frames; let data messages (event == "message") fall through.
+            if event in ("heartbeat_ack", "info", "timeout"):
                 return
 
         # Normal data message.
@@ -211,7 +222,7 @@ class WebSocketClient(QObject):
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
             self._last_ping_sent = time.time()
-            await self._safe_send(ws, json.dumps({"type": "ping", "ts": time.time()}))
+            await self._safe_send(ws, json.dumps({"event": "ping", "ts": time.time()}))
 
     async def _safe_send(self, ws, data: str) -> None:
         try:

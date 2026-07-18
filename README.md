@@ -100,7 +100,7 @@ configured cloud server.
 
 1. Open **Settings** (top-right button).
 2. Enter the **Cloud URL** of the workshop server (e.g.
-   `wss://iot-workshop-server.example.com/ws`).
+   `wss://iot-workshop-server.example.com/ws/receiver`).
 3. Enable **Auto reconnect** if desired.
 4. Click **Save** — the receiver reconnects using the new URL.
 5. Once connected, the server assigns a **receiver code** (e.g. `RX-A31F9D`)
@@ -121,11 +121,14 @@ The connection indicator in the header shows **Online** / **Offline** /
 
    ```json
    {
-     "receiverCode": "RX-A31F9D",
+     "receiver": "RX-A31F9D",
      "device": "sensor-01",
      "type": "temperature",
-     "value": 26.4,
-     "unit": "celsius"
+     "timestamp": "2026-07-18T09:00:00Z",
+     "data": {
+       "value": 26.4,
+       "unit": "celsius"
+     }
    }
    ```
 
@@ -143,7 +146,7 @@ connections** thanks to the lightweight asyncio WebSocket client.
 
 | Setting        | Description                                      | Default                                   |
 |----------------|--------------------------------------------------|-------------------------------------------|
-| Cloud URL      | WebSocket URL of the workshop server             | `wss://iot-workshop-server.example.com/ws`|
+| Cloud URL      | WebSocket URL of the workshop server             | `wss://iot-workshop-server.example.com/ws/receiver`|
 | Dark mode      | Toggle dark / light theme                        | Enabled                                   |
 | Auto reconnect | Automatically reconnect after disconnection     | Enabled                                   |
 | Maximum logs   | Number of log entries kept in memory             | 500                                       |
