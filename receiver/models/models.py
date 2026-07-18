@@ -119,7 +119,7 @@ def parse_message(raw: str) -> Optional[LogEntry]:
 class Settings:
     """Persisted application settings."""
 
-    cloud_url: str = "wss://iot-workshop-server.example.com/ws/receiver"
+    cloud_url: str = "wss://iot-workshop-cloud-728048584958.us-central1.run.app/ws/receiver"
     dark_mode: bool = True
     auto_reconnect: bool = True
     max_logs: int = 500
@@ -130,7 +130,7 @@ class Settings:
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
         return cls(
-            cloud_url=str(data.get("cloud_url", "wss://iot-workshop-server.example.com/ws/receiver")),
+            cloud_url=str(data.get("cloud_url", "wss://iot-workshop-cloud-728048584958.us-central1.run.app/ws/receiver")),
             dark_mode=bool(data.get("dark_mode", True)),
             auto_reconnect=bool(data.get("auto_reconnect", True)),
             max_logs=int(data.get("max_logs", 500)),

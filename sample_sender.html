@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Workshop — Sample Sender</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #6c8eef;
+    --accent-hover: #5a7de0;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --text: #e4e4e7;
+    --text-dim: #9ca3af;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 24px; }
+  .container { max-width: 720px; margin: 0 auto; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 1rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: var(--border); color: var(--text-dim); }
+
+  .row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .field { flex: 1; }
+  label { display: block; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: #3a3d4a; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+
+  .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .preset-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+  .preset-btn:hover { border-color: var(--accent); background: #1e2130; }
+  .preset-btn .ptype { font-size: 0.8rem; font-weight: 600; color: var(--accent); }
+  .preset-btn .pdevice { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+
+  #log {
+    background: #0a0c12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+  .log-entry { padding: 2px 0; }
+  .log-time { color: var(--text-dim); }
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--yellow); }
+  .log-dim { color: var(--text-dim); }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-yellow { background: var(--yellow); }
+
+  .stats { display: flex; gap: 16px; margin-top: 12px; }
+  .stat { text-align: center; }
+  .stat .val { font-size: 1.4rem; font-weight: 700; }
+  .stat .lbl { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; }
+
+  .auto-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .auto-row .field { flex: 1; }
+  .toggle { display: flex; align-items: center; gap: 8px; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+  @media (max-width: 600px) {
+    .row { flex-direction: column; }
+    .preset-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>IoT Workshop — Sample Sender</h1>
+  <p class="subtitle">Send test IoT data to the redirect-server and see it appear in the receiver-app.</p>
+
+  <!-- Connection Settings -->
+  <div class="card">
+    <h2>Connection <span class="badge" id="conn-badge"><span class="status-dot dot-red"></span> Not connected</span></h2>
+    <div class="row">
+      <div class="field">
+        <label>Server URL</label>
+        <input id="serverUrl" value="https://iot-workshop-cloud-728048584958.us-central1.run.app" placeholder="https://your-server.run.app">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>API Key (students)</label>
+        <input id="apiKey" value="workshop-api-key-2026">
+      </div>
+      <div class="field">
+        <label>Admin Key</label>
+        <input id="adminKey" value="admin-key-change-me">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Receiver Code</label>
+        <input id="receiverCode" placeholder="RX-XXXXXXXX (auto-detected if empty)">
+      </div>
+      <div class="field" style="flex: 0 0 auto; display: flex; align-items: flex-end;">
+        <button class="btn btn-secondary btn-sm" onclick="detectReceiver()">Auto-Detect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Send Presets -->
+  <div class="card">
+    <h2>Quick Send — Presets</h2>
+    <div class="preset-grid" id="presets"></div>
+    <div class="auto-row">
+      <div class="toggle">
+        <input type="checkbox" id="autoSend">
+        <label for="autoSend" style="margin: 0; text-transform: none; letter-spacing: 0;">Auto-send every</label>
+      </div>
+      <div class="field" style="flex: 0 0 80px;">
+        <input id="autoInterval" type="number" value="2" min="0.5" step="0.5" style="text-align: center;">
+      </div>
+      <span style="font-size: 0.85rem; color: var(--text-dim);">seconds</span>
+      <button class="btn btn-primary btn-sm" id="autoBtn" onclick="toggleAuto()">Start Auto-Send</button>
+    </div>
+  </div>
+
+  <!-- Custom Message -->
+  <div class="card">
+    <h2>Custom Message</h2>
+    <div class="row">
+      <div class="field">
+        <label>Device Name</label>
+        <input id="customDevice" value="my-sensor-01" placeholder="e.g. temp-sensor-01">
+      </div>
+      <div class="field">
+        <label>Message Type</label>
+        <select id="customType">
+          <option value="temperature">temperature</option>
+          <option value="humidity">humidity</option>
+          <option value="gps">gps</option>
+          <option value="alert">alert</option>
+          <option value="custom">custom</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Data (JSON)</label>
+        <input id="customData" value='{"value": 25.4, "unit": "C"}' placeholder='{"key": "value"}'>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="sendCustom()">Send Custom Message</button>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <h2>Activity Log</h2>
+    <div id="log"></div>
+    <div class="stats">
+      <div class="stat"><div class="val" id="statSent">0</div><div class="lbl">Sent</div></div>
+      <div class="stat"><div class="val" id="statOk">0</div><div class="lbl">Accepted</div></div>
+      <div class="stat"><div class="val" id="statFail">0</div><div class="lbl">Rejected</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const presets = [
+  { device: "temp-sensor-01", type: "temperature", data: () => ({ value: +(Math.random() * 15 + 20).toFixed(1), unit: "C" }) },
+  { device: "humidity-01", type: "humidity", data: () => ({ value: +(Math.random() * 50 + 30).toFixed(1), unit: "%" }) },
+  { device: "gps-tracker-01", type: "gps", data: () => ({ lat: +(Math.random() * 180 - 90).toFixed(6), lon: +(Math.random() * 360 - 180).toFixed(6) }) },
+  { device: "alert-sensor-01", type: "alert", data: () => ({ level: "warning", message: "High temperature detected" }) },
+  { device: "custom-sensor-01", type: "custom", data: () => ({ anything: "you want", count: Math.floor(Math.random() * 100) + 1 }) },
+];
+
+let stats = { sent: 0, ok: 0, fail: 0 };
+let autoTimer = null;
+
+// Render preset buttons
+const presetsEl = document.getElementById('presets');
+presets.forEach((p, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'preset-btn';
+  btn.innerHTML = `<div class="ptype">${p.type}</div><div class="pdevice">${p.device}</div>`;
+  btn.onclick = () => sendPreset(i);
+  presetsEl.appendChild(btn);
+});
+
+function log(msg, cls = '') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${cls}">${msg}</span>`;
+  el.appendChild(entry);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateStats() {
+  document.getElementById('statSent').textContent = stats.sent;
+  document.getElementById('statOk').textContent = stats.ok;
+  document.getElementById('statFail').textContent = stats.fail;
+}
+
+function getServerUrl() {
+  return document.getElementById('serverUrl').value.replace(/\/+$/, '');
+}
+function getApiKey() { return document.getElementById('apiKey').value; }
+function getAdminKey() { return document.getElementById('adminKey').value; }
+function getReceiver() { return document.getElementById('receiverCode').value.trim().toUpperCase(); }
+
+async function detectReceiver() {
+  const url = getServerUrl();
+  log(`Detecting receivers from ${url}/admin/receivers...`, 'log-info');
+  try {
+    const resp = await fetch(`${url}/admin/receivers`, {
+      headers: { 'X-Admin-Key': getAdminKey() }
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const receivers = Array.isArray(data) ? data : (data.receivers || []);
+    if (receivers.length === 0) {
+      log('No receivers connected! Start the receiver-app first.', 'log-err');
+      setConnStatus(false);
+      return;
+    }
+    const code = receivers[0].code;
+    document.getElementById('receiverCode').value = code;
+    log(`Found receiver: ${code} (online: ${receivers[0].online})`, 'log-ok');
+    setConnStatus(true);
+  } catch (e) {
+    log(`Failed to detect receivers: ${e.message}`, 'log-err');
+    setConnStatus(false);
+  }
+}
+
+function setConnStatus(online) {
+  const badge = document.getElementById('conn-badge');
+  if (online) {
+    badge.innerHTML = '<span class="status-dot dot-green"></span> Connected';
+  } else {
+    badge.innerHTML = '<span class="status-dot dot-red"></span> Not connected';
+  }
+}
+
+async function sendMessage(device, type, data) {
+  const url = getServerUrl();
+  let receiver = getReceiver();
+  if (!receiver) {
+    log('No receiver code set. Auto-detecting...', 'log-info');
+    await detectReceiver();
+    receiver = getReceiver();
+    if (!receiver) return;
+  }
+
+  const payload = {
+    receiver: receiver,
+    device: device,
+    type: type,
+    timestamp: new Date().toISOString(),
+    data: data,
+  };
+
+  stats.sent++;
+  updateStats();
+
+  try {
+    const resp = await fetch(`${url}/api/send`, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': getApiKey(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await resp.json();
+    const status = result.status || 'Unknown';
+    const forwarded = result.forwarded;
+
+    if (resp.ok && status === 'Accepted') {
+      stats.ok++;
+      log(`✓ ${device} | ${type} | status=${status} forwarded=${forwarded}`, 'log-ok');
+    } else if (resp.status === 429) {
+      stats.fail++;
+      log(`✗ ${device} | ${type} | RATE LIMITED (429) — ${result.reason || ''}`, 'log-err');
+    } else {
+      stats.fail++;
+      log(`✗ ${device} | ${type} | status=${status} — ${result.reason || resp.status}`, 'log-err');
+    }
+  } catch (e) {
+    stats.fail++;
+    log(`✗ ${device} | ${type} | Error: ${e.message}`, 'log-err');
+  }
+  updateStats();
+}
+
+async function sendPreset(index) {
+  const p = presets[index];
+  const data = p.data();
+  await sendMessage(p.device, p.type, data);
+}
+
+async function sendCustom() {
+  const device = document.getElementById('customDevice').value.trim();
+  const type = document.getElementById('customType').value;
+  const dataStr = document.getElementById('customData').value.trim();
+  if (!device) { log('Device name is required', 'log-err'); return; }
+  let data;
+  try {
+    data = JSON.parse(dataStr);
+  } catch (e) {
+    log(`Invalid JSON data: ${e.message}`, 'log-err');
+    return;
+  }
+  await sendMessage(device, type, data);
+}
+
+function toggleAuto() {
+  const btn = document.getElementById('autoBtn');
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    btn.textContent = 'Start Auto-Send';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-primary');
+    log('Auto-send stopped.', 'log-info');
+    return;
+  }
+  const interval = parseFloat(document.getElementById('autoInterval').value) || 2;
+  const ms = Math.max(500, interval * 1000);
+  btn.textContent = 'Stop Auto-Send';
+  btn.classList.remove('btn-primary');
+  btn.classList.add('btn-danger');
+  log(`Auto-send started — sending random preset every ${interval}s`, 'log-info');
+  autoTimer = setInterval(() => {
+    const idx = Math.floor(Math.random() * presets.length);
+    sendPreset(idx);
+  }, ms);
+}
+
+// Auto-detect on load
+window.addEventListener('DOMContentLoaded', () => {
+  log('IoT Sample Sender ready. Click Auto-Detect to find receivers.', 'log-dim');
+});
+</script>
+</body>
+</html>
