@@ -283,15 +283,22 @@ class MainWindow(QMainWindow):
         self.table.setItem(row, 0, QTableWidgetItem(entry.timestamp_str))
         self.table.setItem(row, 1, QTableWidgetItem(entry.device))
         self.table.setItem(row, 2, QTableWidgetItem(entry.message_type))
+        import json as _json
         pretty = entry.raw_data
         if entry.parsed is not None:
-            import json as _json
             try:
-                pretty = _json.dumps(entry.parsed, indent=2, ensure_ascii=False)
+                data_field = entry.parsed.get("data", entry.parsed)
+                pretty = _json.dumps(data_field, ensure_ascii=False)
             except Exception:
                 pretty = entry.raw_data
         data_item = QTableWidgetItem(pretty)
-        data_item.setToolTip(pretty)
+        full_json = ""
+        if entry.parsed is not None:
+            try:
+                full_json = _json.dumps(entry.parsed, indent=2, ensure_ascii=False)
+            except Exception:
+                full_json = entry.raw_data
+        data_item.setToolTip(full_json)
         self.table.setItem(row, 3, data_item)
 
     # ------------------------------------------------------------------
