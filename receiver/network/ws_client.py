@@ -165,6 +165,9 @@ class WebSocketClient(QObject):
             self.status_changed.emit("online")
             self.info.emit("Connected to cloud server")
 
+            # Announce ourselves as a receiver.
+            await self._safe_send(ws, json.dumps({"role": "receiver"}))
+
             heartbeat_task = asyncio.ensure_future(self._heartbeat(ws))
             try:
                 async for raw in ws:
@@ -191,27 +194,14 @@ class WebSocketClient(QObject):
             control = None
 
         if isinstance(control, dict):
-            event = control.get("event", "")
-
-            # Receiver code assignment (connected event or legacy fields)
-            if event == "connected" or "receiver_code" in control or "receiverCode" in control or "code" in control:
-                code = control.get("receiver_code") or control.get("receiverCode") or control.get("code")
-                if code:
-                    self.code_received.emit(str(code))
+            if "receiverCode" in control or "code" in control:
+                code = control.get("receiverCode") or control.get("code")
+                self.code_received.emit(str(code))
                 return
-
-            # Pong — measure latency
-            if event == "pong":
-                if self._last_ping_sent:
-                    latency = (time.time() - self._last_ping_sent) * 1000.0
-                    self.latency_updated.emit(round(latency, 1))
-                    self._last_ping_sent = None
-                return
-
-            # Other control events — don't treat as data messages
-            if event in ("heartbeat_ack", "info", "error", "timeout"):
-                if event == "timeout":
-                    self.info.emit(control.get("message", "Heartbeat timeout"))
+            if control.get("type") == "pong" and self._last_ping_sent:
+                latency = (time.time() - self._last_ping_sent) * 1000.0
+                self.latency_updated.emit(round(latency, 1))
+                self._last_ping_sent = None
                 return
 
         # Normal data message.
@@ -221,7 +211,7 @@ class WebSocketClient(QObject):
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
             self._last_ping_sent = time.time()
-            await self._safe_send(ws, json.dumps({"event": "ping"}))
+            await self._safe_send(ws, json.dumps({"type": "ping", "ts": time.time()}))
 
     async def _safe_send(self, ws, data: str) -> None:
         try:
